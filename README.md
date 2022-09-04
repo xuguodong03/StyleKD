@@ -1,7 +1,7 @@
 # StyleKD
 This repo is the implementation of paper [Mind the Gap in Distilling StyleGANs (ECCV2022)](https://arxiv.org/abs/2208.08840).
 
-<img src="https://github.com/xuguodong03/StyleKD/raw/master/images/teaser.png" width="100%" height="100%">
+<img src="https://github.com/xuguodong03/StyleKD/raw/master/images/teaser.png" width="80%" height="80%">
 
 ## Running 
 
@@ -17,18 +17,18 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 python3 -m torch.distributed.launch --nproc_per_nod
 ## Results
 
 ### Quantitative Results
-<img src="https://github.com/xuguodong03/StyleKD/raw/master/images/result.jpeg" width="100%" height="100%">
+<img src="https://github.com/xuguodong03/StyleKD/raw/master/images/result.jpeg" width="80%" height="80%">
 
 ### Qualitative Results
 
 #### Face
-<img src="https://github.com/xuguodong03/StyleKD/raw/master/images/compare_1024_char.jpg" width="100%" height="100%">
+<img src="https://github.com/xuguodong03/StyleKD/raw/master/images/compare_1024_char.jpg" width="90%" height="90%">
 
 #### Church
-<img src="https://github.com/xuguodong03/StyleKD/raw/master/images/church.jpg" width="100%" height="100%">
+<img src="https://github.com/xuguodong03/StyleKD/raw/master/images/church.jpg" width="90%" height="90%">
 
 #### Face Editing
-<img src="https://github.com/xuguodong03/StyleKD/raw/master/images/editing_a.jpg" width="100%" height="100%">
+<img src="https://github.com/xuguodong03/StyleKD/raw/master/images/editing_a.jpg" width="90%" height="90%">
 
 ## Citation
 If you find this repo useful for your research, please consider citing the paper
