@@ -1,36 +1,29 @@
 import argparse
+import os
+import os.path as osp
 import random
-import os, os.path as osp
 import time
-import cv2
-import mmcv
 
 import numpy as np
 import torch
-from torch import nn, autograd, optim
+from torch import autograd, nn, optim
 from torch.nn import functional as F
-from torch.utils import data
-from torch.utils.data.distributed import DistributedSampler
-import torch.distributed as dist
-from torchvision import transforms, utils
-import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
-
-from model import Generator, Discriminator, EqualLinear
-from dataset import FFHQ_Dataset
-from Miscellaneous.distributed import (
-    reduce_loss_dict,
-    reduce_sum,
-    get_world_size,
-    synchronize,
-)
-from Util.network_util import Build_Generator_From_Dict
-from Util.content_aware_pruning import Get_Parsing_Net, Batch_Img_Parsing, Get_Masked_Tensor
-from Evaluation.fid import Get_Model_FID_Score
-import lpips
-from op import conv2d_gradfix
-
+from torch.utils import data
 from torch.utils.tensorboard import SummaryWriter
+from torchvision import transforms, utils
+
+import lpips
+from dataset import FFHQ_Dataset
+from Evaluation.fid import Get_Model_FID_Score
+from Miscellaneous.distributed import (get_world_size, reduce_loss_dict,
+                                       reduce_sum, synchronize)
+from model import Discriminator, EqualLinear
+from op import conv2d_gradfix
+from Util.content_aware_pruning import (Batch_Img_Parsing, Get_Masked_Tensor,
+                                        Get_Parsing_Net)
+from Util.network_util import Build_Generator_From_Dict
+
 
 def data_sampler(dataset, shuffle, distributed):
     if distributed:
@@ -96,7 +89,7 @@ def KD_loss(args, teacher_g, noise, inject_index, fake_img, fake_img_list, perce
     fake_img_teacher = fake_img_teacher_list[-1]
 
     # Content-Aware Adjustment for fake_img and fake_img_teacher
-    if parsing_net is not None:    
+    if parsing_net is not None:
         with torch.no_grad():
             teacher_img_parsing = Batch_Img_Parsing(fake_img_teacher, parsing_net, device)
         fake_img_teacher = Get_Masked_Tensor(fake_img_teacher, teacher_img_parsing, device, mask_grad=False)
@@ -109,8 +102,8 @@ def KD_loss(args, teacher_g, noise, inject_index, fake_img, fake_img_list, perce
     elif args.kd_mode == 'Intermediate':
         #for fake_img_teacher in fake_img_teacher_list:
         #    fake_img_teacher.requires_grad = True
-        loss_list = [torch.mean(torch.abs(fake_img_teacher - fake_img)) for (fake_img_teacher, fake_img) in zip(fake_img_teacher_list, fake_img_list)] 
-        kd_l1_loss = sum(loss_list)  
+        loss_list = [torch.mean(torch.abs(fake_img_teacher - fake_img)) for (fake_img_teacher, fake_img) in zip(fake_img_teacher_list, fake_img_list)]
+        kd_l1_loss = sum(loss_list)
 
     kd_style_loss = F.l1_loss(student_w, teacher_w)
 
@@ -145,7 +138,7 @@ def KD_loss(args, teacher_g, noise, inject_index, fake_img, fake_img_list, perce
             s_simi = F.log_softmax(s_simi, dim=1)
             t_simi = F.softmax(t_simi, dim=1)
             kd_simi_loss += F.kl_div(s_simi, t_simi, reduction='batchmean')
-    
+
     return kd_l1_loss, kd_lpips_loss, kd_simi_loss, kd_style_loss
 
 
@@ -218,8 +211,8 @@ def G_Loss_BackProp(generator, discriminator, args, loss_dict, g_optim, teacher_
 
     # KD Loss
     kd_l1_loss, kd_lpips_loss, kd_simi_loss, kd_style_loss = KD_loss(args, teacher_g, noise, inject_index, fake_img, fake_img_list, percept_loss, parsing_net, offsets, student_feat_list, idx, student_w, device)
-    loss_dict['kd_l1_loss'] = kd_l1_loss        
-    loss_dict['kd_lpips_loss'] = kd_lpips_loss        
+    loss_dict['kd_l1_loss'] = kd_l1_loss
+    loss_dict['kd_lpips_loss'] = kd_lpips_loss
     loss_dict['kd_simi_loss'] = kd_simi_loss
     loss_dict['kd_style_loss'] = kd_style_loss
     total_loss = total_loss + args.kd_l1_lambda * kd_l1_loss \
@@ -235,7 +228,7 @@ def G_Reg_BackProp(generator, args, mean_path_length, g_optim):
 
     path_batch_size = max(1, args.batch // args.path_batch_shrink)
     noise = mixing_noise(path_batch_size, args.latent, args.mixing, device)
-    
+
     fake_img, path_lengths = generator(noise, PPL_regularize=True)
     decay = 0.01
     path_mean = mean_path_length + decay * (path_lengths.mean() - mean_path_length)
@@ -282,7 +275,7 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, teach
     sample_z = torch.load('noise.pth').to(device)
 
     for iter_idx in range(args.start_iter, args.iter):
-        
+
         real_img = next(loader).to(device)
         real_img.requires_grad_()
 
@@ -297,11 +290,11 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, teach
             real_pred = discriminator(real_img)
             fake_pred = discriminator(fake_img)
             d_loss = d_logistic_loss(real_pred, fake_pred)
-            
+
             loss_dict['d'] = d_loss
             loss_dict['real_score'] = real_pred.mean()
             loss_dict['fake_score'] = fake_pred.mean()
-            
+
             # Discriminator regularization
             if iter_idx % args.d_reg_every == 0:
 
@@ -310,18 +303,18 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, teach
 
                 d_reg_loss = args.r1 / 2 * r1_loss * args.d_reg_every + 0 * real_pred[0]
                 d_loss = d_loss + d_reg_loss
-                
+
             d_optim.zero_grad()
             d_loss.backward()
             d_optim.step()
 
-        # Use GAN loss to train the generator 
+        # Use GAN loss to train the generator
         G_Loss_BackProp(generator, discriminator, args, loss_dict, g_optim, teacher_g, percept_loss, parsing_net, vectors, iter_idx, device)
 
         # Generator regularization
         if iter_idx % args.g_reg_every == 0 and (iter_idx >= args.g_step):
             path_loss, path_lengths, mean_path_length, mean_path_length_avg = G_Reg_BackProp(generator, args, mean_path_length, g_optim)
-            
+
             loss_dict['path'] = path_loss
             loss_dict['path_length'] = path_lengths.mean()
         time3 = time.time()
@@ -380,10 +373,10 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, teach
                             nrow=int(args.n_sample ** 0.5), \
                             normalize=True, range=(-1,1))
 
-        if (iter_idx % args.model_save_freq == 0) and (iter_idx > 0):            
+        if (iter_idx % args.model_save_freq == 0) and (iter_idx > 0):
             with torch.no_grad():
                 g_ema_fid = Get_Model_FID_Score(generator=g_ema, \
-                    batch_size=args.fid_batch, num_sample=args.fid_n_sample, 
+                    batch_size=args.fid_batch, num_sample=args.fid_n_sample,
                     device=device, gpu_device_ids=[args.local_rank], info_print=False)
 
             if args.local_rank == 0:
@@ -396,7 +389,7 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, teach
                     },
                     ckpt_dir + f'{str(iter_idx).zfill(6)}.pt'
                 )
-            
+
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
@@ -406,7 +399,7 @@ if __name__ == '__main__':
     parser.add_argument('--channel_multiplier', type=int, default=2)
     parser.add_argument('--latent', type=int, default=512)
     parser.add_argument('--n_mlp', type=int, default=8)
-    
+
     parser.add_argument('--iter', type=int, default=450001)
     parser.add_argument('--lr', type=float, default=0.002)
     parser.add_argument('--r1', type=float, default=10)
@@ -415,25 +408,25 @@ if __name__ == '__main__':
     parser.add_argument('--d_reg_every', type=int, default=16)
     parser.add_argument('--g_reg_every', type=int, default=4)
     parser.add_argument('--mixing', type=float, default=0.9)
-    
+
     parser.add_argument('--n_sample', type=int, default=25)
     parser.add_argument('--val_sample_freq', type=int, default=1000)
     parser.add_argument('--model_save_freq', type=int, default=10000)
     parser.add_argument('--fid_n_sample', type=int, default=50000)
     parser.add_argument('--fid_batch', type=int, default=32)
-    
+
     parser.add_argument('--teacher_ckpt', type=str, \
             default='model/full_size_model/256px_full_size.pt')
     parser.add_argument('--kd_mode', type=str, default='Output_Only')
     parser.add_argument('--content_aware_KD', action='store_false')
     parser.add_argument('--lpips_image_size', type=int, default=256)
-    
+
     parser.add_argument('--mimic-layer', type=int, nargs='*', default=[2,3,4,5])
     parser.add_argument('--kd_l1_lambda', type=float, default=0)
     parser.add_argument('--kd_lpips_lambda', type=float, default=0)
     parser.add_argument('--kd_simi_lambda', type=float, default=0)
     parser.add_argument('--kd_style_lambda', type=float, default=0.0)
-    
+
     parser.add_argument('--name', type=str)
     parser.add_argument('--load', type=int)
     parser.add_argument('--load_style', type=int)
@@ -442,16 +435,16 @@ if __name__ == '__main__':
     parser.add_argument('--worker', type=int)
     parser.add_argument('--start_iter', type=int, default=0)
     parser.add_argument('--kernel_size', type=int, default=3)
-    
+
     parser.add_argument('--lr_mlp', type=float, default=0.01)
     parser.add_argument('--fix_w', type=int)
-    
+
     parser.add_argument('--simi_loss', type=str, choices=['mse', 'kl'], default='mse')
     parser.add_argument('--single_view', type=int, default=0)
     parser.add_argument('--offset_mode', type=str, choices=['random', 'main'], default='main')
     parser.add_argument('--main_direction', type=str, choices=['split', 'global'], default='split')
     parser.add_argument('--offset_weight', type=float, default=5.0)
-    
+
     parser.add_argument('--mlp_cfg', type=int, nargs='*', default=None)
     parser.add_argument('--mlp_loss', type=str, default='L1')
     parser.add_argument('--mlp_pretrain', action='store_true')
@@ -468,7 +461,7 @@ if __name__ == '__main__':
         synchronize()
 
     device = 'cuda'
-    
+
     # ============================== Setting All Hyperparameters ==============================
     g_reg_ratio = args.g_reg_every / (args.g_reg_every + 1)
     d_reg_ratio = args.d_reg_every / (args.d_reg_every + 1)
@@ -479,7 +472,7 @@ if __name__ == '__main__':
             transforms.Resize(args.size),
             transforms.ToTensor(),
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)])
-    
+
     train_dataset = FFHQ_Dataset(args.path, transform)
     loader = data.DataLoader(
             train_dataset,
@@ -544,7 +537,7 @@ if __name__ == '__main__':
 
     # Content aware KD
     parsing_net, _ = Get_Parsing_Net(device)
-        
+
     # Parallelize the model
     generator = DDP(generator, device_ids=[args.local_rank], output_device=args.local_rank, broadcast_buffers=False)
     discriminator = DDP(discriminator, device_ids=[args.local_rank], output_device=args.local_rank, broadcast_buffers=False)
