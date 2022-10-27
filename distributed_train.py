@@ -6,6 +6,7 @@ import time
 
 import numpy as np
 import torch
+import tqdm
 from torch import autograd, nn, optim
 from torch.nn import functional as F
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -251,7 +252,8 @@ def G_Reg_BackProp(generator, args, mean_path_length, g_optim):
     return path_loss, path_lengths, mean_path_length, mean_path_length_avg
 
 
-def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, teacher_g, percept_loss, parsing_net, exp_dir, logger, vectors, device):
+def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema,
+          teacher_g, percept_loss, parsing_net, exp_dir, logger, vectors, device):
 
     loader = cycle(loader)
 
@@ -274,7 +276,7 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, teach
 
     sample_z = torch.load('noise.pth').to(device)
 
-    for iter_idx in range(args.start_iter, args.iter):
+    for iter_idx in tqdm.tqdm(range(args.start_iter, args.iter)):
 
         real_img = next(loader).to(device)
         real_img.requires_grad_()
