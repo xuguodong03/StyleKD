@@ -17,7 +17,7 @@ import lpips
 from dataset import FFHQ_Dataset
 from Evaluation.fid import Get_Model_FID_Score
 from Miscellaneous.distributed import (get_world_size, reduce_loss_dict,
-                                       reduce_sum, synchronize)
+                                       reduce_sum)
 from model import Discriminator, EqualLinear
 from op import conv2d_gradfix
 from Util.content_aware_pruning import (Batch_Img_Parsing, Get_Masked_Tensor,
@@ -393,9 +393,9 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, teach
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--path', type=str, default='/home/xuguodong/DATA/FFHQ/images1024x1024')
+    parser.add_argument('--path', type=str, default='/kaggle/input/ffhq-256x256')
     parser.add_argument('--size', type=int, default=256)
-    parser.add_argument('--ckpt', type=str, default='model/pruned_model/0.7_256px.pth')
+    parser.add_argument('--ckpt', type=str, default='550000.pt')
     parser.add_argument('--channel_multiplier', type=int, default=2)
     parser.add_argument('--latent', type=int, default=512)
     parser.add_argument('--n_mlp', type=int, default=8)
@@ -415,8 +415,7 @@ if __name__ == '__main__':
     parser.add_argument('--fid_n_sample', type=int, default=50000)
     parser.add_argument('--fid_batch', type=int, default=32)
 
-    parser.add_argument('--teacher_ckpt', type=str, \
-            default='model/full_size_model/256px_full_size.pt')
+    parser.add_argument('--teacher_ckpt', type=str, default='550000.pt')
     parser.add_argument('--kd_mode', type=str, default='Output_Only')
     parser.add_argument('--content_aware_KD', action='store_false')
     parser.add_argument('--lpips_image_size', type=int, default=256)
@@ -453,12 +452,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     n_gpu = int(os.environ["WORLD_SIZE"]) if "WORLD_SIZE" in os.environ else 1
-    args.distributed = n_gpu > 1
-
-    if args.distributed:
-        torch.cuda.set_device(args.local_rank)
-        torch.distributed.init_process_group(backend="nccl", init_method='env://')
-        synchronize()
+    args.distributed = False
 
     device = 'cuda'
 
