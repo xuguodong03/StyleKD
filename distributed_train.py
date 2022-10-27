@@ -276,6 +276,12 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema,
 
     sample_z = torch.load('noise.pth').to(device)
 
+    for i, batch in enumerate(loader):
+        print(i)
+        print(len(batch))
+        if i == 3:
+            break
+
     for iter_idx in tqdm.tqdm(range(args.start_iter, args.iter)):
         print('CHECK 0')
 
