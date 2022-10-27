@@ -507,6 +507,8 @@ if __name__ == '__main__':
             drop_last=True,
             pin_memory=True
     )
+    print('dataset len:', len(train_dataset))
+    print('dataloader len:', len(loader))
 
     # ============================== Building Network Model ==============================
 
