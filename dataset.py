@@ -14,8 +14,6 @@ class FFHQ_Dataset(Dataset):
     def __init__(self, image_folder, transform = None):
         images_list = os.listdir(image_folder)
         self.images_list = sorted([os.path.join(image_folder, image) for image in images_list])
-        print(len(images_list))
-        print(images_list[:10])
         self.transform = transform
 
     def __getitem__(self, index):

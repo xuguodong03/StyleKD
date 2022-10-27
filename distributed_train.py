@@ -255,8 +255,7 @@ def G_Reg_BackProp(generator, args, mean_path_length, g_optim):
 def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema,
           teacher_g, percept_loss, parsing_net, exp_dir, logger, vectors, device):
 
-    #loader = cycle(loader)
-    #loader = iter(loader)
+    loader = cycle(loader)
 
     if args.local_rank == 0:
         sample_dir = exp_dir + '/sample/'
@@ -277,33 +276,14 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema,
 
     sample_z = torch.load('noise.pth').to(device)
 
-    #for i, batch in enumerate(loader):
-    #    print(i)
-    #    print(len(batch))
-    #    if i == 3:
-    #        break
 
-    iter_idx = args.start_iter
-
-    #for iter_idx in tqdm.tqdm(range(args.start_iter, args.iter)):
-    for real_img in tqdm.tqdm(loader):
-        if iter_idx == args.iter:
-            break
-        else:
-            iter_idx += 1
-        print('CHECK 0')
-
-        #real_img = next(loader).to(device)
-        real_img = real_img.to(device)
-        print('CHECK 1')
+    for iter_idx in tqdm.tqdm(range(args.start_iter, args.iter)):
+        real_img = next(loader).to(device)
         real_img.requires_grad_()
-        print('CHECK 2')
 
         requires_grad(generator, False)
-        print('CHECK 3')
         requires_grad(discriminator, True)
 
-        print('CHECK 4')
         # Use GAN loss to train the discriminator
         if iter_idx >= args.g_step:
 
@@ -330,12 +310,10 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema,
             d_loss.backward()
             d_optim.step()
 
-        print('CHECK 2')
 
         # Use GAN loss to train the generator
         G_Loss_BackProp(generator, discriminator, args, loss_dict, g_optim, teacher_g, percept_loss, parsing_net, vectors, iter_idx, device)
 
-        print('CHECK 3')
         # Generator regularization
         if iter_idx % args.g_reg_every == 0 and (iter_idx >= args.g_step):
             path_loss, path_lengths, mean_path_length, mean_path_length_avg = G_Reg_BackProp(generator, args, mean_path_length, g_optim)
@@ -343,8 +321,8 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema,
             loss_dict['path'] = path_loss
             loss_dict['path_length'] = path_lengths.mean()
 
-        print('CHECK 4')
-        accumulate(g_ema, generator.module, accum)
+        #accumulate(g_ema, generator.module, accum)
+        accumulate(g_ema, generator, accum)
 
         loss_reduced = reduce_loss_dict(loss_dict)
         print('CHECK 5')
@@ -410,10 +388,15 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema,
 
             if args.local_rank == 0:
                 logger.add_scalar('val/FID', g_ema_fid, iter_idx)
+                    #{
+                    #    'g': generator.module.state_dict(),
+                    #    'd': discriminator.module.state_dict(),
+                    #    'g_ema': g_ema.state_dict(),
+                    #},
                 torch.save(
                     {
-                        'g': generator.module.state_dict(),
-                        'd': discriminator.module.state_dict(),
+                        'g': generator.state_dict(),
+                        'd': discriminator.state_dict(),
                         'g_ema': g_ema.state_dict(),
                     },
                     ckpt_dir + f'{str(iter_idx).zfill(6)}.pt'
