@@ -448,7 +448,7 @@ if __name__ == '__main__':
     parser.add_argument('--mlp_loss', type=str, default='L1')
     parser.add_argument('--mlp_pretrain', action='store_true')
 
-    parser.add_argument('--local_rank', type=int, )
+    parser.add_argument('--local_rank', type=int, default=0)
 
     args = parser.parse_args()
     n_gpu = int(os.environ["WORLD_SIZE"]) if "WORLD_SIZE" in os.environ else 1
@@ -533,8 +533,8 @@ if __name__ == '__main__':
     parsing_net, _ = Get_Parsing_Net(device)
 
     # Parallelize the model
-    generator = DDP(generator, device_ids=[args.local_rank], output_device=args.local_rank, broadcast_buffers=False)
-    discriminator = DDP(discriminator, device_ids=[args.local_rank], output_device=args.local_rank, broadcast_buffers=False)
+    #generator = DDP(generator, device_ids=[args.local_rank], output_device=args.local_rank, broadcast_buffers=False)
+    #discriminator = DDP(discriminator, device_ids=[args.local_rank], output_device=args.local_rank, broadcast_buffers=False)
 
     # ============================== Initializing Optimizers ==============================
     if args.fix_w:
