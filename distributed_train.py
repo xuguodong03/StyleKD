@@ -2,14 +2,13 @@ import argparse
 import os
 import os.path as osp
 import random
-import time
 
 import numpy as np
 import torch
 import tqdm
+import wandb
 from torch import autograd, nn, optim
 from torch.nn import functional as F
-from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils import data
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms, utils
@@ -359,6 +358,17 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema,
                 logger.add_scalar('train/D_reg', round(r1_val,3), iter_idx)
                 logger.add_scalar('train/G_reg', round(path_loss_val,3), iter_idx)
                 logger.add_scalar('train/G_mean_path', round(mean_path_length_avg,4), iter_idx)
+                wandb.log({
+                    'train/D_loss': round(d_loss_val,3),
+                    'train/G_loss': round(g_loss_val,3),
+                    'train/KD_L1_loss': round(kd_l1_loss_val,3),
+                    'train/KD_LPIPS_loss': round(kd_lpips_loss_val,3),
+                    'train/KD_SIMI_loss': round(kd_simi_loss_val,3),
+                    'train/KD_style_loss': round(kd_style_loss_val,3),
+                    'train/D_reg': round(r1_val,3),
+                    'train/G_reg': round(path_loss_val,3),
+                    'train/G_mean_path': round(mean_path_length_avg,4),
+                })
 
         if iter_idx % args.val_sample_freq == 0:
             with torch.no_grad():
@@ -384,6 +394,7 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema,
 
             if args.local_rank == 0:
                 logger.add_scalar('val/FID', g_ema_fid, iter_idx)
+                wandb.log('val/FID': g_ema_fid)
                     #{
                     #    'g': generator.module.state_dict(),
                     #    'd': discriminator.module.state_dict(),
@@ -408,7 +419,7 @@ if __name__ == '__main__':
     parser.add_argument('--latent', type=int, default=512)
     parser.add_argument('--n_mlp', type=int, default=8)
 
-    parser.add_argument('--iter', type=int, default=450001)
+    parser.add_argument('--iter', type=int, default=35000)
     parser.add_argument('--lr', type=float, default=0.002)
     parser.add_argument('--r1', type=float, default=10)
     parser.add_argument('--path_regularize', type=float, default=2)
@@ -464,6 +475,7 @@ if __name__ == '__main__':
 
     device = 'cuda'
 
+    wandb.init(project="style-kd")
     # ============================== Setting All Hyperparameters ==============================
     g_reg_ratio = args.g_reg_every / (args.g_reg_every + 1)
     d_reg_ratio = args.d_reg_every / (args.d_reg_every + 1)
