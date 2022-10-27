@@ -255,7 +255,7 @@ def G_Reg_BackProp(generator, args, mean_path_length, g_optim):
 def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema,
           teacher_g, percept_loss, parsing_net, exp_dir, logger, vectors, device):
 
-    loader = cycle(loader)
+    #loader = cycle(loader)
 
     if args.local_rank == 0:
         sample_dir = exp_dir + '/sample/'
