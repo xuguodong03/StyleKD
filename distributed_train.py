@@ -280,12 +280,15 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema,
         print('CHECK 0')
 
         real_img = next(loader).to(device)
+        print('CHECK 1')
         real_img.requires_grad_()
+        print('CHECK 2')
 
         requires_grad(generator, False)
+        print('CHECK 3')
         requires_grad(discriminator, True)
 
-        print('CHECK 1')
+        print('CHECK 4')
         # Use GAN loss to train the discriminator
         if iter_idx >= args.g_step:
 
