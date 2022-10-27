@@ -394,7 +394,7 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema,
 
             if args.local_rank == 0:
                 logger.add_scalar('val/FID', g_ema_fid, iter_idx)
-                wandb.log('val/FID': g_ema_fid)
+                wandb.log({'val/FID': g_ema_fid})
                     #{
                     #    'g': generator.module.state_dict(),
                     #    'd': discriminator.module.state_dict(),
@@ -412,7 +412,7 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema,
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--path', type=str, default='/kaggle/input/ffhq-256x256')
+    parser.add_argument('--path', type=str, default='/kaggle/input/ffhq-256x256/images256x256')
     parser.add_argument('--size', type=int, default=256)
     parser.add_argument('--ckpt', type=str, default='550000.pt')
     parser.add_argument('--channel_multiplier', type=int, default=2)
