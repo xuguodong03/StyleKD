@@ -277,6 +277,7 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema,
     sample_z = torch.load('noise.pth').to(device)
 
     for iter_idx in tqdm.tqdm(range(args.start_iter, args.iter)):
+        print('CHECK 0')
 
         real_img = next(loader).to(device)
         real_img.requires_grad_()
@@ -284,6 +285,7 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema,
         requires_grad(generator, False)
         requires_grad(discriminator, True)
 
+        print('CHECK 1')
         # Use GAN loss to train the discriminator
         if iter_idx >= args.g_step:
 
@@ -310,20 +312,24 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema,
             d_loss.backward()
             d_optim.step()
 
+        print('CHECK 2')
+
         # Use GAN loss to train the generator
         G_Loss_BackProp(generator, discriminator, args, loss_dict, g_optim, teacher_g, percept_loss, parsing_net, vectors, iter_idx, device)
 
+        print('CHECK 3')
         # Generator regularization
         if iter_idx % args.g_reg_every == 0 and (iter_idx >= args.g_step):
             path_loss, path_lengths, mean_path_length, mean_path_length_avg = G_Reg_BackProp(generator, args, mean_path_length, g_optim)
 
             loss_dict['path'] = path_loss
             loss_dict['path_length'] = path_lengths.mean()
-        time3 = time.time()
 
+        print('CHECK 4')
         accumulate(g_ema, generator.module, accum)
 
         loss_reduced = reduce_loss_dict(loss_dict)
+        print('CHECK 5')
 
         if iter_idx > args.g_step + 20:
             d_loss_val = loss_reduced['d'].mean().item()
@@ -347,6 +353,7 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema,
         kd_simi_loss_val = loss_reduced['kd_simi_loss'].mean().item()
         kd_style_loss_val = loss_reduced['kd_style_loss'].mean().item()
 
+        print('CHECK 6')
         if iter_idx % 10 == 0:
             if args.local_rank == 0:
                 logger.add_scalar('train/D_loss', round(d_loss_val,3), iter_idx)
@@ -359,6 +366,7 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema,
                 logger.add_scalar('train/G_reg', round(path_loss_val,3), iter_idx)
                 logger.add_scalar('train/G_mean_path', round(mean_path_length_avg,4), iter_idx)
 
+        print('CHECK 7')
         if iter_idx % args.val_sample_freq == 0:
             with torch.no_grad():
                 sample = g_ema([sample_z])
@@ -375,6 +383,7 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema,
                             nrow=int(args.n_sample ** 0.5), \
                             normalize=True, range=(-1,1))
 
+        print('CHECK 8')
         if (iter_idx % args.model_save_freq == 0) and (iter_idx > 0):
             with torch.no_grad():
                 g_ema_fid = Get_Model_FID_Score(generator=g_ema, \
@@ -391,6 +400,7 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema,
                     },
                     ckpt_dir + f'{str(iter_idx).zfill(6)}.pt'
                 )
+        print('CHECK 9')
 
 if __name__ == '__main__':
 
@@ -464,10 +474,11 @@ if __name__ == '__main__':
 
     # ============================== Building Dataset ==============================
     transform = transforms.Compose([
-            transforms.RandomHorizontalFlip(),
-            transforms.Resize(args.size),
-            transforms.ToTensor(),
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)])
+        transforms.RandomHorizontalFlip(),
+        transforms.Resize(args.size),
+        transforms.ToTensor(),
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True),
+    ])
 
     train_dataset = FFHQ_Dataset(args.path, transform)
     loader = data.DataLoader(
