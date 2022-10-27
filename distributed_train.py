@@ -256,7 +256,7 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema,
           teacher_g, percept_loss, parsing_net, exp_dir, logger, vectors, device):
 
     #loader = cycle(loader)
-    loader = iter(loader)
+    #loader = iter(loader)
 
     if args.local_rank == 0:
         sample_dir = exp_dir + '/sample/'
@@ -283,10 +283,18 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema,
     #    if i == 3:
     #        break
 
-    for iter_idx in tqdm.tqdm(range(args.start_iter, args.iter)):
+    iter_idx = args.start_iter
+
+    #for iter_idx in tqdm.tqdm(range(args.start_iter, args.iter)):
+    for real_img in tqdm.tqdm(loader):
+        if iter_idx == args.iter:
+            break
+        else:
+            iter_idx += 1
         print('CHECK 0')
 
-        real_img = next(loader).to(device)
+        #real_img = next(loader).to(device)
+        real_img = real_img.to(device)
         print('CHECK 1')
         real_img.requires_grad_()
         print('CHECK 2')
