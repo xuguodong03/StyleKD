@@ -2,6 +2,7 @@ import argparse
 import os
 import os.path as osp
 import random
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -507,6 +508,9 @@ if __name__ == '__main__':
     ])
 
     #train_dataset = FFHQ_Dataset(args.path, transform)
+    Path(args.cifar_path).mkdir(parents=True, exist_ok=True)
+    CIFAR10(root=args.cifar_path, train=True, download=True)
+    CIFAR10(root=args.cifar_path, train=False, download=True)
     trainval_raw_dataset = CIFAR10(root=args.cifar_path, train=True)
     test_raw_dataset = CIFAR10(root=args.cifar_path)
     train_dataset, val_dataset, test_dataset = \
