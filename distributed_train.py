@@ -12,9 +12,10 @@ from torch.nn import functional as F
 from torch.utils import data
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms, utils
+from torchvision.datasets import CIFAR10
 
 import lpips
-from dataset import FFHQ_Dataset
+from dataset import prepare_cifar_datasets
 from Evaluation.fid import Get_Model_FID_Score
 from Miscellaneous.distributed import (get_world_size, reduce_loss_dict,
                                        reduce_sum)
@@ -33,8 +34,8 @@ def data_sampler(dataset, shuffle, distributed):
     else:
         return data.SequentialSampler(dataset)
 
-def calc_direction_split(model, args):
 
+def calc_direction_split(model, args):
     vectors = []
     for i in range(max(args.mimic_layer)):
         w1 = model.convs[2*i].conv.modulation.weight.data.cpu().numpy()
@@ -45,8 +46,8 @@ def calc_direction_split(model, args):
         vectors.append(torch.from_numpy(eigen_vectors[:,:5].T))
     return torch.cat(vectors, dim=0)   # (5*L) * 512
 
-def calc_direction_global(model, args):
 
+def calc_direction_global(model, args):
     k = 0
     pool = []
     for i in range(max(args.mimic_layer)):
@@ -60,9 +61,11 @@ def calc_direction_global(model, args):
     _, eigen_vectors = np.linalg.eig(w.dot(w.T))
     return torch.from_numpy(eigen_vectors[:,:k].T)
 
+
 def requires_grad(model, flag=True):
     for p in model.parameters():
         p.requires_grad = flag
+
 
 def accumulate(model1, model2, decay=0.999):
     par1 = dict(model1.named_parameters())
@@ -71,17 +74,20 @@ def accumulate(model1, model2, decay=0.999):
     for k in par1.keys():
         par1[k].data.mul_(decay).add_(par2[k].data, alpha=1-decay)
 
+
 def cycle(loader):
     while True:
         for batch in loader:
             yield batch
 
+
 def Downsample_Image(im_tensor, size):
     im_tensor = F.interpolate(im_tensor, size=(size, size), mode='bilinear', align_corners=False)
     return im_tensor
 
-def KD_loss(args, teacher_g, noise, inject_index, fake_img, fake_img_list, percept_loss, parsing_net, offsets, student_feat_list, idx, student_w, device):
 
+def KD_loss(args, teacher_g, noise, inject_index, fake_img, fake_img_list,
+            percept_loss, parsing_net, offsets, student_feat_list, idx, student_w, device):
     with torch.no_grad():
         fake_img_teacher_list, teacher_feat_list, teacher_w = teacher_g(noise, \
                 offsets=offsets, return_rgb_list=True, inject_index=inject_index, \
@@ -92,7 +98,8 @@ def KD_loss(args, teacher_g, noise, inject_index, fake_img, fake_img_list, perce
     if parsing_net is not None:
         with torch.no_grad():
             teacher_img_parsing = Batch_Img_Parsing(fake_img_teacher, parsing_net, device)
-        fake_img_teacher = Get_Masked_Tensor(fake_img_teacher, teacher_img_parsing, device, mask_grad=False)
+        fake_img_teacher = \
+            Get_Masked_Tensor(fake_img_teacher, teacher_img_parsing, device, mask_grad=False)
         fake_img = Get_Masked_Tensor(fake_img, teacher_img_parsing, device, mask_grad=True)
     #fake_img_teacher.requires_grad = True
 
@@ -102,7 +109,11 @@ def KD_loss(args, teacher_g, noise, inject_index, fake_img, fake_img_list, perce
     elif args.kd_mode == 'Intermediate':
         #for fake_img_teacher in fake_img_teacher_list:
         #    fake_img_teacher.requires_grad = True
-        loss_list = [torch.mean(torch.abs(fake_img_teacher - fake_img)) for (fake_img_teacher, fake_img) in zip(fake_img_teacher_list, fake_img_list)]
+        loss_list = [
+            torch.mean(torch.abs(fake_img_teacher - fake_img))
+            for (fake_img_teacher, fake_img)
+            in zip(fake_img_teacher_list, fake_img_list)
+        ]
         kd_l1_loss = sum(loss_list)
 
     kd_style_loss = F.l1_loss(student_w, teacher_w)
@@ -179,7 +190,8 @@ def index_aware_mixing_noise(batch, latent_dim, prob, n_latent, device):
     else:
         return [make_noise(batch, latent_dim, 1, device)], None
 
-def G_Loss_BackProp(generator, discriminator, args, loss_dict, g_optim, teacher_g, percept_loss, parsing_net, vectors, idx, device):
+def G_Loss_BackProp(generator, discriminator, args, loss_dict, g_optim,
+                    teacher_g, percept_loss, parsing_net, vectors, idx, device):
 
     requires_grad(generator, True)
     requires_grad(discriminator, False)
@@ -200,8 +212,13 @@ def G_Loss_BackProp(generator, discriminator, args, loss_dict, g_optim, teacher_
     offsets = offsets[:,None,:]
 
     # GAN Loss
-    noise, inject_index = index_aware_mixing_noise(args.batch, args.latent, args.mixing, args.n_latent, device)
-    fake_img_list, student_feat_list, student_w = generator(noise, offsets=offsets, return_rgb_list=True, inject_index=inject_index, return_feat=True, return_style=True)
+    noise, inject_index = \
+        index_aware_mixing_noise(args.batch, args.latent, args.mixing,
+                                 args.n_latent, device)
+    fake_img_list, student_feat_list, student_w = \
+        generator(noise, offsets=offsets, return_rgb_list=True,
+                  inject_index=inject_index, return_feat=True,
+                  return_style=True)
     fake_img = fake_img_list[-1]
     fake_pred = discriminator(fake_img)
     g_loss = g_nonsaturating_loss(fake_pred)
@@ -210,7 +227,10 @@ def G_Loss_BackProp(generator, discriminator, args, loss_dict, g_optim, teacher_
     total_loss = g_loss if idx >= args.g_step else 0
 
     # KD Loss
-    kd_l1_loss, kd_lpips_loss, kd_simi_loss, kd_style_loss = KD_loss(args, teacher_g, noise, inject_index, fake_img, fake_img_list, percept_loss, parsing_net, offsets, student_feat_list, idx, student_w, device)
+    kd_l1_loss, kd_lpips_loss, kd_simi_loss, kd_style_loss = \
+        KD_loss(args, teacher_g, noise, inject_index, fake_img, fake_img_list,
+                percept_loss, parsing_net, offsets, student_feat_list, idx,
+                student_w, device)
     loss_dict['kd_l1_loss'] = kd_l1_loss
     loss_dict['kd_lpips_loss'] = kd_lpips_loss
     loss_dict['kd_simi_loss'] = kd_simi_loss
@@ -311,16 +331,18 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema,
 
 
         # Use GAN loss to train the generator
-        G_Loss_BackProp(generator, discriminator, args, loss_dict, g_optim, teacher_g, percept_loss, parsing_net, vectors, iter_idx, device)
+        G_Loss_BackProp(generator, discriminator, args, loss_dict, g_optim,
+                        teacher_g, percept_loss, parsing_net, vectors, iter_idx,
+                        device)
 
         # Generator regularization
         if iter_idx % args.g_reg_every == 0 and (iter_idx >= args.g_step):
-            path_loss, path_lengths, mean_path_length, mean_path_length_avg = G_Reg_BackProp(generator, args, mean_path_length, g_optim)
+            path_loss, path_lengths, mean_path_length, mean_path_length_avg = \
+                G_Reg_BackProp(generator, args, mean_path_length, g_optim)
 
             loss_dict['path'] = path_loss
             loss_dict['path_length'] = path_lengths.mean()
 
-        #accumulate(g_ema, generator.module, accum)
         accumulate(g_ema, generator, accum)
 
         loss_reduced = reduce_loss_dict(loss_dict)
@@ -395,11 +417,6 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema,
             if args.local_rank == 0:
                 logger.add_scalar('val/FID', g_ema_fid, iter_idx)
                 wandb.log({'val/FID': g_ema_fid})
-                    #{
-                    #    'g': generator.module.state_dict(),
-                    #    'd': discriminator.module.state_dict(),
-                    #    'g_ema': g_ema.state_dict(),
-                    #},
                 torch.save(
                     {
                         'g': generator.state_dict(),
@@ -413,6 +430,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--path', type=str, default='/kaggle/input/ffhq-256x256/images256x256')
+    parser.add_argument('--cifar_path', type=str, default='/kaggle/input/cifar10/')
     parser.add_argument('--size', type=int, default=256)
     parser.add_argument('--ckpt', type=str, default='550000.pt')
     parser.add_argument('--channel_multiplier', type=int, default=2)
@@ -488,14 +506,19 @@ if __name__ == '__main__':
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True),
     ])
 
-    train_dataset = FFHQ_Dataset(args.path, transform)
+    #train_dataset = FFHQ_Dataset(args.path, transform)
+    trainval_raw_dataset = CIFAR10(root=args.cifar_path, train=True)
+    test_raw_dataset = CIFAR10(root=args.cifar_path)
+    train_dataset, val_dataset, test_dataset = \
+        prepare_cifar_datasets(trainval_raw_dataset, test_raw_dataset)
+
     loader = data.DataLoader(
-            train_dataset,
-            num_workers=args.worker,
-            batch_size = args.batch,
-            sampler=data_sampler(train_dataset, shuffle=True, distributed=args.distributed),
-            drop_last=True,
-            pin_memory=True
+        train_dataset,
+        num_workers=args.worker,
+        batch_size = args.batch,
+        sampler=data_sampler(train_dataset, shuffle=True, distributed=args.distributed),
+        drop_last=True,
+        pin_memory=True,
     )
     print('dataset len:', len(train_dataset))
     print('dataloader len:', len(loader))
@@ -549,8 +572,8 @@ if __name__ == '__main__':
     vectors = eval(f'calc_direction_{args.main_direction}')(teacher_g, args)
 
     # LPIPS KD
-    percept_loss = lpips.PerceptualLoss(model='net-lin', net='vgg', \
-                    use_gpu=True, gpu_ids=[args.local_rank])
+    percept_loss = \
+        lpips.PerceptualLoss(model='net-lin', net='vgg', use_gpu=True, gpu_ids=[args.local_rank])
 
     # Content aware KD
     parsing_net, _ = Get_Parsing_Net(device)
@@ -614,5 +637,7 @@ if __name__ == '__main__':
                 logger.add_scalar('MLP_loss', loss.item(), idx)
         accumulate(g_ema, generator, 0)
 
-    train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, teacher_g, percept_loss, parsing_net, exp_dir, logger, vectors, device)
+    train(args, loader, generator, discriminator, g_optim, d_optim, g_ema,
+          teacher_g, percept_loss, parsing_net, exp_dir, logger, vectors,
+          device)
 
